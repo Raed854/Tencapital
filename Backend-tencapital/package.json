@@ -1,0 +1,52 @@
+{
+  "name": "investormatch-backend",
+  "version": "1.0.0",
+  "description": "Backend API for InvestorMatch with MongoDB",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "start:enhanced": "node start-server.js",
+    "dev": "nodemon server.js",
+    "dev:enhanced": "nodemon start-server.js",
+    "test": "node test-server.js",
+    "test:api": "node test-server.js",
+    "setup-admin": "node scripts/setup-admin.js",
+    "create-admin": "node create-admin.js",
+    "create-admin-api": "node scripts/create-admin-api.js",
+    "test-admin": "node scripts/test-admin-login.js",
+    "remove-admin": "node scripts/remove-admin.js",
+    "admin-help": "node scripts/admin-help.js",
+    "test-cache": "node test-cache.js",
+    "cache-stats": "node -e \"const { cache } = require('./utils/cache'); console.log('Cache Stats:', cache.getStats());\"",
+    "cache-clear": "node -e \"const { cache } = require('./utils/cache'); cache.clear(); console.log('Cache cleared!');\"",
+    "cache-warmup": "node -e \"const axios = require('axios'); const { TEST_ADMIN_CREDENTIALS } = require('./test-cache'); console.log('Cache warmup completed!');\""
+  },
+  "keywords": [
+    "express",
+    "mongodb",
+    "mongoose",
+    "user-registration",
+    "api"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.12.2",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "form-data": "^4.0.4",
+    "joi": "^17.11.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.0.3",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^3.3.2",
+    "openai": "^5.23.1",
+    "path": "^0.12.7",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

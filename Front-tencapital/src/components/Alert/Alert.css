@@ -1,0 +1,301 @@
+/* Alert Container */
+.alert-container {
+  position: fixed;
+  z-index: 10000;
+  max-width: 400px;
+  width: 100%;
+  pointer-events: none;
+}
+
+/* Alert Positions */
+.alert-top-right {
+  top: 20px;
+  right: 20px;
+}
+
+.alert-top-left {
+  top: 20px;
+  left: 20px;
+}
+
+.alert-top-center {
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.alert-bottom-right {
+  bottom: 20px;
+  right: 20px;
+}
+
+.alert-bottom-left {
+  bottom: 20px;
+  left: 20px;
+}
+
+.alert-bottom-center {
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Alert Base Styles */
+.alert {
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border: none;
+  overflow: hidden;
+  pointer-events: auto;
+  position: relative;
+  animation: alertSlideIn 0.3s ease-out;
+}
+
+.alert-exiting {
+  animation: alertSlideOut 0.3s ease-in forwards;
+}
+
+/* Alert Content */
+.alert-content {
+  display: flex;
+  align-items: flex-start;
+  padding: 16px 20px;
+  gap: 0;
+}
+
+.alert-icon {
+  display: none;
+}
+
+.alert-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.alert-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.alert-message {
+  font-size: 14px;
+  color: #6b7280;
+  line-height: 1.5;
+  word-wrap: break-word;
+  font-weight: 400;
+}
+
+.alert-close {
+  display: none;
+}
+
+/* Alert Types - Minimalist style, no colored borders */
+.alert-success {
+  border-left: none;
+}
+
+.alert-success .alert-icon {
+  display: none;
+}
+
+.alert-success .alert-title {
+  color: #111827;
+}
+
+.alert-error {
+  border-left: none;
+}
+
+.alert-error .alert-icon {
+  display: none;
+}
+
+.alert-error .alert-title {
+  color: #111827;
+}
+
+.alert-warning {
+  border-left: none;
+}
+
+.alert-warning .alert-icon {
+  display: none;
+}
+
+.alert-warning .alert-title {
+  color: #111827;
+}
+
+.alert-info {
+  border-left: none;
+}
+
+.alert-info .alert-icon {
+  display: none;
+}
+
+.alert-info .alert-title {
+  color: #111827;
+}
+
+/* Alert Actions */
+.alert-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.alert-action {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.alert-action.primary {
+  background: #007bff;
+  color: white;
+}
+
+.alert-action.primary:hover {
+  background: #0056b3;
+  transform: translateY(-1px);
+}
+
+.alert-action.secondary {
+  background: #6c757d;
+  color: white;
+}
+
+.alert-action.secondary:hover {
+  background: #545b62;
+  transform: translateY(-1px);
+}
+
+.alert-action.success {
+  background: #28a745;
+  color: white;
+}
+
+.alert-action.success:hover {
+  background: #1e7e34;
+  transform: translateY(-1px);
+}
+
+.alert-action.danger {
+  background: #dc3545;
+  color: white;
+}
+
+.alert-action.danger:hover {
+  background: #c82333;
+  transform: translateY(-1px);
+}
+
+/* Progress Bar - Hidden for minimalist design */
+.alert-progress {
+  display: none;
+}
+
+/* Animations */
+@keyframes alertSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes alertSlideOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+@keyframes alertProgress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .alert-container {
+    max-width: calc(100vw - 40px);
+    left: 20px !important;
+    right: 20px !important;
+    transform: none !important;
+  }
+  
+  .alert {
+    border-radius: 8px;
+  }
+  
+  .alert-content {
+    padding: 12px;
+  }
+  
+  .alert-title {
+    font-size: 15px;
+  }
+  
+  .alert-message {
+    font-size: 13px;
+  }
+  
+  .alert-actions {
+    flex-direction: column;
+  }
+  
+  .alert-action {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+/* Dark Mode Support - Keep white background */
+@media (prefers-color-scheme: dark) {
+  .alert {
+    background: #ffffff;
+    border-color: transparent;
+    color: #111827;
+  }
+  
+  .alert-title {
+    color: #111827;
+  }
+  
+  .alert-message {
+    color: #6b7280;
+  }
+  
+  .alert-close {
+    color: #6b7280;
+  }
+  
+  .alert-close:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: #111827;
+  }
+}

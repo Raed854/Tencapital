@@ -1,0 +1,6 @@
+investorType,sector,industries,investmentStage,revenueCriteria,firstName,lastName,email,location,organizationPersonName,description,phoneNumber,website,linkedin
+Venture Capitalist,Technology,AI;Machine Learning,Series A,$1M–$10M,John,Smith,john.smith@techvc.com,"San Francisco, CA",TechVC Partners,Specialized in AI and machine learning startups,+1-555-0123,https://techvc.com,https://linkedin.com/in/johnsmith
+Angel,Healthcare,Biotech;Pharmaceuticals,Seed,Under $1M,Sarah,Johnson,sarah@bioangel.com,"Boston, MA",BioAngel Group,Early-stage biotech investments,+1-555-0456,https://bioangel.com,https://linkedin.com/in/sarahjohnson
+Corporate Investor,Finance,Fintech;Blockchain,Series B,$10M–$50M,Michael,Brown,m.brown@fintech.corp,"New York, NY",FinTech Corp Ventures,Corporate venture arm focused on fintech,+1-555-0789,https://fintech.corp,https://linkedin.com/in/michaelbrown
+Private Equity,Energy,Clean Energy;Renewable,Growth,$50M–$100M,Emily,Davis,emily.davis@greenequity.com,"Austin, TX",Green Equity Partners,Sustainable energy investments,+1-555-0321,https://greenequity.com,https://linkedin.com/in/emilydavis
+Venture Capitalist,Education,EdTech;Online Learning,Series A,$1M–$10M,David,Wilson,david@edtech.vc,"Seattle, WA",EdTech Ventures,Educational technology investments,+1-555-0654,https://edtech.vc,https://linkedin.com/in/davidwilson

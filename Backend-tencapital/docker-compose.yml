@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # MongoDB service
+  mongodb:
+    image: mongo:7.0
+    container_name: investormatch-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_INITDB_DATABASE: investormatch
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d
+    networks:
+      - investormatch-network
+
+  # Backend API service
+  backend:
+    build: .
+    container_name: investormatch-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - MONGODB_URI=mongodb://admin:password@mongodb:27017/investormatch?authSource=admin
+      - MONGODB_HOST=mongodb
+      - MONGODB_PORT=27017
+      - MONGODB_DATABASE=investormatch
+      - MONGODB_USERNAME=admin
+      - MONGODB_PASSWORD=password
+      - JWT_SECRET=your_jwt_secret_key_here
+      - JWT_EXPIRE=7d
+      - CORS_ORIGIN=http://localhost:3000
+    depends_on:
+      - mongodb
+    volumes:
+      - ./uploads:/app/uploads
+    networks:
+      - investormatch-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5000/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Development service (optional - for development with hot reload)
+  backend-dev:
+    build: .
+    container_name: investormatch-backend-dev
+    restart: unless-stopped
+    ports:
+      - "5001:5000"
+    environment:
+      - NODE_ENV=development
+      - PORT=5000
+      - MONGODB_URI=mongodb://admin:password@mongodb:27017/investormatch?authSource=admin
+      - MONGODB_HOST=mongodb
+      - MONGODB_PORT=27017
+      - MONGODB_DATABASE=investormatch
+      - MONGODB_USERNAME=admin
+      - MONGODB_PASSWORD=password
+      - JWT_SECRET=your_jwt_secret_key_here
+      - JWT_EXPIRE=7d
+      - CORS_ORIGIN=http://localhost:3000
+    depends_on:
+      - mongodb
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - ./uploads:/app/uploads
+    networks:
+      - investormatch-network
+    command: npm run dev
+    profiles:
+      - dev
+
+volumes:
+  mongodb_data:
+    driver: local
+
+networks:
+  investormatch-network:
+    driver: bridge

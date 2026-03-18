@@ -1,0 +1,651 @@
+const ExcelMapping = require('../models/ExcelMapping');
+const HeaderNormalizer = require('../utils/headerNormalizer');
+const aiMappingService = require('../services/aiMappingService');
+const XLSX = require('xlsx');
+const path = require('path');
+const fs = require('fs');
+
+// Configuration OpenAI (si nécessaire)
+let openai = null;
+try {
+  const { OpenAI } = require('openai');
+  if (process.env.OPENAI_API_KEY) {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+  }
+} catch (error) {
+  console.log('OpenAI not configured or not installed');
+}
+
+class ExcelController {
+  // Upload et traitement du fichier Excel
+  static async uploadExcel(req, res) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: 'No Excel file uploaded'
+        });
+      }
+
+      const { userId } = req.body;
+      if (!userId) {
+        return res.status(400).json({
+          success: false,
+          message: 'User ID is required'
+        });
+      }
+
+      // Convertir userId en ObjectId si c'est une chaîne
+      let validUserId = userId;
+      if (typeof userId === 'string' && userId.length !== 24) {
+        // Si ce n'est pas un ObjectId valide, créer un ObjectId temporaire
+        const mongoose = require('mongoose');
+        validUserId = new mongoose.Types.ObjectId();
+        console.log('⚠️ UserId non-ObjectId détecté, utilisation d\'un ObjectId temporaire:', validUserId);
+      }
+
+      // Vérifier que le fichier existe
+      if (!fs.existsSync(req.file.path)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Uploaded file not found on server'
+        });
+      }
+
+      console.log('Reading Excel file from:', req.file.path);
+      
+      // Lire le fichier Excel
+      const workbook = XLSX.readFile(req.file.path);
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      
+      // Convertir en JSON
+      const excelData = XLSX.utils.sheet_to_json(worksheet);
+      
+      if (excelData.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Excel file is empty or has no data'
+        });
+      }
+
+      // Mapping intelligent des colonnes avec IA
+      const mappingResult = HeaderNormalizer.normalizeExcelHeaders(excelData);
+      const mappedData = mappingResult.normalizedData;
+      
+      // Validation des données
+      const validatedData = ExcelMapping.validateMappedData(mappedData);
+      
+      // Normalisation des données
+      const normalizedData = ExcelMapping.normalizeData(validatedData);
+
+      // Ajouter les métadonnées
+      const processedData = normalizedData.map(row => ({
+        ...row,
+        sourceFile: req.file.filename,
+        userId: validUserId,
+        status: 'pending'
+      }));
+
+      // Sauvegarder en base de données
+      const savedData = await ExcelMapping.insertMany(processedData);
+
+      // Nettoyer le fichier temporaire
+      fs.unlinkSync(req.file.path);
+
+      res.json({
+        success: true,
+        message: 'Excel file processed successfully',
+        data: {
+          totalRows: savedData.length,
+          processedRows: savedData.filter(row => row.validationErrors.length === 0).length,
+          errorRows: savedData.filter(row => row.validationErrors.length > 0).length,
+          fileInfo: {
+            originalName: req.file.originalname,
+            size: req.file.size,
+            uploadedAt: new Date()
+          },
+          mappingReport: mappingResult.report
+        },
+        rows: savedData.map(row => ({
+          id: row._id,
+          rowNumber: row.rowNumber,
+          hasErrors: row.validationErrors.length > 0,
+          errors: row.validationErrors
+        }))
+      });
+
+    } catch (error) {
+      console.error('Excel upload error:', error);
+      
+      // Nettoyer le fichier en cas d'erreur
+      if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Error processing Excel file',
+        error: error.message
+      });
+    }
+  }
+
+  // Prévisualisation des données Excel
+  static async previewExcel(req, res) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: 'No Excel file uploaded'
+        });
+      }
+
+      // Lire le fichier Excel
+      const workbook = XLSX.readFile(req.file.path);
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      
+      // Convertir en JSON
+      const excelData = XLSX.utils.sheet_to_json(worksheet);
+      
+      if (excelData.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Excel file is empty or has no data'
+        });
+      }
+
+      // Mapping intelligent des colonnes avec IA
+      const mappingResult = HeaderNormalizer.normalizeExcelHeaders(excelData);
+      const mappedData = mappingResult.normalizedData;
+      
+      // Validation des données
+      const validatedData = ExcelMapping.validateMappedData(mappedData);
+
+      // Nettoyer le fichier temporaire
+      fs.unlinkSync(req.file.path);
+
+      res.json({
+        success: true,
+        message: 'Excel file preview generated',
+        data: {
+          totalRows: validatedData.length,
+          columns: Object.keys(excelData[0] || {}),
+          mappedColumns: Object.keys(mappedData[0] || {}),
+          sampleData: validatedData.slice(0, 5), // Premières 5 lignes
+          mappingReport: mappingResult.report,
+          validationSummary: {
+            validRows: validatedData.filter(row => row.validationErrors.length === 0).length,
+            errorRows: validatedData.filter(row => row.validationErrors.length > 0).length,
+            commonErrors: ExcelController.getCommonErrors(validatedData)
+          }
+        }
+      });
+
+    } catch (error) {
+      console.error('Excel preview error:', error);
+      
+      // Nettoyer le fichier en cas d'erreur
+      if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Error previewing Excel file',
+        error: error.message
+      });
+    }
+  }
+
+  // Validation des données Excel
+  static async validateExcelData(req, res) {
+    try {
+      const { data } = req.body;
+      
+      if (!data || !Array.isArray(data)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Data array is required'
+        });
+      }
+
+      // Validation des données
+      const validatedData = ExcelMapping.validateMappedData(data);
+      
+      // Normalisation des données
+      const normalizedData = ExcelMapping.normalizeData(validatedData);
+
+      res.json({
+        success: true,
+        message: 'Data validation completed',
+        data: {
+          totalRows: normalizedData.length,
+          validRows: normalizedData.filter(row => row.validationErrors.length === 0).length,
+          errorRows: normalizedData.filter(row => row.validationErrors.length > 0).length,
+          validationResults: normalizedData.map(row => ({
+            rowNumber: row.rowNumber,
+            isValid: row.validationErrors.length === 0,
+            errors: row.validationErrors
+          }))
+        }
+      });
+
+    } catch (error) {
+      console.error('Data validation error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error validating data',
+        error: error.message
+      });
+    }
+  }
+
+  // Obtenir les erreurs communes
+  static getCommonErrors(validatedData) {
+    const errorCounts = {};
+    
+    validatedData.forEach(row => {
+      row.validationErrors.forEach(error => {
+        const key = `${error.field}: ${error.message}`;
+        errorCounts[key] = (errorCounts[key] || 0) + 1;
+      });
+    });
+
+    return Object.entries(errorCounts)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 10)
+      .map(([error, count]) => ({ error, count }));
+  }
+
+  // Obtenir les informations de mapping
+  static async getMappingInfo(req, res) {
+    try {
+      const mappingInfo = {
+        supportedFormats: ['.xlsx', '.xls', '.csv'],
+        maxFileSize: '10MB',
+        maxRows: 10000,
+        defaultMapping: HeaderNormalizer.getDefaultMapping(),
+        aiMapping: {
+          enabled: true,
+          confidenceThreshold: 0.3,
+          supportedAlgorithms: ['jaccard', 'levenshtein', 'keyword_matching']
+        },
+        validationRules: {
+          email: 'Must be a valid email format',
+          phoneNumber: 'Must be a valid phone number',
+          website: 'Must start with http:// or https://',
+          linkedin: 'Must be a valid LinkedIn profile URL',
+          investmentAmount: 'Must be a positive number',
+          investmentDate: 'Must be a valid date'
+        }
+      };
+
+      res.json({
+        success: true,
+        message: 'Mapping information retrieved',
+        data: mappingInfo
+      });
+
+    } catch (error) {
+      console.error('Mapping info error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error retrieving mapping information',
+        error: error.message
+      });
+    }
+  }
+
+  // Analyser les en-têtes Excel avec IA
+  static async analyzeHeaders(req, res) {
+    try {
+      const { headers } = req.body;
+      
+      if (!headers || !Array.isArray(headers)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Headers array is required'
+        });
+      }
+
+      // Générer le mapping intelligent
+      const mappingResult = aiMappingService.generateIntelligentMapping(headers);
+      const report = aiMappingService.generateMappingReport(mappingResult);
+      
+      // Générer des suggestions
+      const suggestions = HeaderNormalizer.generateMappingSuggestions(
+        mappingResult.mapping, 
+        headers
+      );
+
+      res.json({
+        success: true,
+        message: 'Headers analyzed successfully',
+        data: {
+          originalHeaders: headers,
+          mapping: mappingResult.mapping,
+          report: report,
+          suggestions: suggestions
+        }
+      });
+
+    } catch (error) {
+      console.error('Header analysis error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error analyzing headers',
+        error: error.message
+      });
+    }
+  }
+
+  // Valider un mapping personnalisé
+  static async validateCustomMapping(req, res) {
+    try {
+      const { mapping, headers } = req.body;
+      
+      if (!mapping || !headers) {
+        return res.status(400).json({
+          success: false,
+          message: 'Mapping and headers are required'
+        });
+      }
+
+      const validation = HeaderNormalizer.validateMapping(mapping, headers);
+      const suggestions = HeaderNormalizer.generateMappingSuggestions(mapping, headers);
+
+      res.json({
+        success: true,
+        message: 'Mapping validation completed',
+        data: {
+          validation: validation,
+          suggestions: suggestions
+        }
+      });
+
+    } catch (error) {
+      console.error('Mapping validation error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error validating mapping',
+        error: error.message
+      });
+    }
+  }
+
+  // Obtenir les données traitées par utilisateur
+  static async getUserExcelData(req, res) {
+    try {
+      const { userId } = req.params;
+      const { status, page = 1, limit = 50 } = req.query;
+
+      const filter = { userId };
+      if (status) {
+        filter.status = status;
+      }
+
+      const skip = (page - 1) * limit;
+      
+      const data = await ExcelMapping.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit));
+
+      const total = await ExcelMapping.countDocuments(filter);
+
+      res.json({
+        success: true,
+        message: 'Excel data retrieved successfully',
+        data: {
+          rows: data,
+          pagination: {
+            currentPage: parseInt(page),
+            totalPages: Math.ceil(total / limit),
+            totalRows: total,
+            hasNext: page * limit < total,
+            hasPrev: page > 1
+          }
+        }
+      });
+
+    } catch (error) {
+      console.error('Get user Excel data error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error retrieving Excel data',
+        error: error.message
+      });
+    }
+  }
+
+  // Marquer les données comme traitées
+  static async markAsProcessed(req, res) {
+    try {
+      const { ids } = req.body;
+      
+      if (!ids || !Array.isArray(ids)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Array of IDs is required'
+        });
+      }
+
+      const result = await ExcelMapping.updateMany(
+        { _id: { $in: ids } },
+        { 
+          isProcessed: true,
+          status: 'active'
+        }
+      );
+
+      res.json({
+        success: true,
+        message: 'Data marked as processed successfully',
+        data: {
+          updatedCount: result.modifiedCount
+        }
+      });
+
+    } catch (error) {
+      console.error('Mark as processed error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error marking data as processed',
+        error: error.message
+      });
+    }
+  }
+
+  // Mapper les données avec ChatGPT
+  static async mapExcelData(req, res) {
+    try {
+      const { data } = req.body;
+
+      // Validation des données d'entrée
+      if (!data || !Array.isArray(data) || data.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid data format. Expected array of arrays with headers and rows.'
+        });
+      }
+
+      const headers = data[0];
+      const rows = data.slice(1);
+
+      if (!headers || headers.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'No headers found in the data.'
+        });
+      }
+
+      console.log('🔍 Mapping Excel data with headers:', headers);
+
+      let mappedHeaders = {};
+      
+      try {
+        // Essayer d'abord avec ChatGPT si disponible
+        if (openai && process.env.OPENAI_API_KEY) {
+          console.log('🤖 Using ChatGPT for header mapping');
+          mappedHeaders = await mapHeadersWithChatGPT(headers);
+        } else {
+          console.log('🧠 Using local AI mapping service');
+          // Utiliser le service AI local existant
+          const mappingResult = await aiMappingService.generateIntelligentMapping(headers);
+          
+          // Le service AI retourne déjà le bon format : { mapping: { "Header": "field" } }
+          if (mappingResult && mappingResult.mapping) {
+            mappedHeaders = mappingResult.mapping;
+          } else {
+            // Fallback si pas de mapping
+            mappedHeaders = {};
+            headers.forEach(header => {
+              mappedHeaders[header] = header.toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
+            });
+          }
+        }
+      } catch (aiError) {
+        console.error('AI mapping failed, using fallback:', aiError.message);
+        // Fallback vers le mapping local
+        try {
+          const mappingResult = await aiMappingService.generateIntelligentMapping(headers);
+          
+          if (mappingResult && mappingResult.mapping) {
+            mappedHeaders = mappingResult.mapping;
+          } else {
+            throw new Error('No mapping result');
+          }
+        } catch (fallbackError) {
+          console.error('Fallback also failed:', fallbackError.message);
+          // Fallback ultime : mapping 1:1
+          mappedHeaders = {};
+          headers.forEach(header => {
+            const cleanField = header.toLowerCase()
+              .replace(/[^a-zA-Z0-9]/g, '')
+              .replace(/^\d/, 'field$&'); // Ajouter 'field' si commence par un chiffre
+            mappedHeaders[header] = cleanField;
+          });
+        }
+      }
+
+      // Mapper les données
+      const mappedData = rows.map((row, index) => {
+        const mappedRow = {};
+        
+        headers.forEach((header, colIndex) => {
+          const mappedField = mappedHeaders[header];
+          const value = row[colIndex];
+          
+          if (mappedField && value !== undefined && value !== null && value !== '') {
+            // Nettoyer et normaliser la valeur
+            const cleanValue = String(value).trim();
+            if (cleanValue) {
+              mappedRow[mappedField] = cleanValue;
+            }
+          }
+        });
+        
+        return mappedRow;
+      });
+
+      // Filtrer les lignes vides
+      const filteredData = mappedData.filter(row => {
+        return Object.keys(row).length > 0 && Object.values(row).some(val => val && val.trim());
+      });
+
+      console.log(`✅ Successfully mapped ${filteredData.length} rows`);
+
+      res.json({
+        success: true,
+        mapped: filteredData,
+        original_headers: headers,
+        mapped_headers: mappedHeaders,
+        total_rows: filteredData.length,
+        mapping_method: openai && process.env.OPENAI_API_KEY ? 'chatgpt' : 'local_ai'
+      });
+
+    } catch (error) {
+      console.error('❌ Error mapping Excel data:', error);
+      console.error('❌ Error stack:', error.stack);
+      
+      res.status(500).json({
+        success: false,
+        message: 'Failed to map Excel data. Please try again.',
+        error: process.env.NODE_ENV === 'development' ? {
+          message: error.message,
+          stack: error.stack
+        } : undefined
+      });
+    }
+  }
+}
+
+// Fonction helper pour mapping avec ChatGPT
+async function mapHeadersWithChatGPT(headers) {
+  const prompt = `
+Analyze the following Excel headers and map them to standardized database field names for an investor/investment database.
+
+Headers: ${JSON.stringify(headers)}
+
+Requirements:
+1. Convert headers to camelCase format (e.g., "Investor Type" → "investorType")
+2. Handle common variations and synonyms (e.g., "Investment Stage" or "Stage" → "investmentStage")
+3. Normalize similar headers (e.g., "Sector" and "Sectors" → "sector")
+4. Remove duplicates and keep the most appropriate field name
+5. Use standard field names for common investment terms
+
+Common field mappings to consider:
+- Investor Type/Type → investorType
+- Sector/Sectors → sector  
+- Industry/Industries → industries
+- Investment Stage/Stage/Round → investmentStage
+- Investment Size/Amount/Size → investmentAmount
+- Location/Geography/Region → location
+- Company Name/Startup/Company → companyName
+- Founded/Founded Date/Year → foundedDate
+- Description/About → description
+- Contact/Email → email
+- Website/URL → website
+- Portfolio/Investments → portfolio
+
+Return ONLY a valid JSON object with this structure:
+{
+  "Header Name 1": "mappedFieldName1",
+  "Header Name 2": "mappedFieldName2"
+}
+`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-3.5-turbo",
+    messages: [
+      {
+        role: "system",
+        content: "You are a data mapping expert specializing in investment and startup databases. Respond only with valid JSON mapping original headers to camelCase field names."
+      },
+      {
+        role: "user",
+        content: prompt
+      }
+    ],
+    temperature: 0.1,
+    max_tokens: 1000
+  });
+
+  const responseText = completion.choices[0].message.content.trim();
+  
+  try {
+    // Nettoyer la réponse pour extraire le JSON
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    const jsonText = jsonMatch ? jsonMatch[0] : responseText;
+    return JSON.parse(jsonText);
+  } catch (parseError) {
+    console.error('Failed to parse ChatGPT response:', responseText);
+    throw new Error('Invalid AI response format');
+  }
+}
+
+module.exports = ExcelController;
